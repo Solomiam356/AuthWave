@@ -1,8 +1,8 @@
-export const dynamic = 'force-dynamic';
-
 import { currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
@@ -12,19 +12,34 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const profile = await prisma.profile.findUnique({
+        // 1. Шукаємо профіль
+        let profile = await prisma.profile.findUnique({
             where: { userId: clerkUser.id },
             select: { 
-                subscriptionTier: true,
+                subscriptionTier: true, 
                 subscriptionActive: true 
             },
         });
 
+        // 2. Якщо профілю немає — СТВОРЮЄМО його автоматично!
         if (!profile) {
-            return NextResponse.json({ error: "No Profile Found" }, { status: 404 });
+            console.log("Creating new profile for user:", clerkUser.id);
+            // Створюємо запис, щоб не було помилки 404
+            const newProfile = await prisma.profile.create({
+                data: {
+                    userId: clerkUser.id,
+                    email: clerkUser.emailAddresses[0].emailAddress,
+                    subscriptionTier: null, // Спочатку підписки немає
+                    subscriptionActive: false,
+                },
+            });
+            // Повертаємо новий профіль
+            return NextResponse.json({
+                subscriptionTier: newProfile.subscriptionTier,
+                subscriptionActive: newProfile.subscriptionActive
+            });
         }
 
-        // Повертаємо об'єкт профілю напряму, без обгортки { subscription: profile }
         return NextResponse.json(profile);
 
     } catch (error: any) {
